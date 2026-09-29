@@ -10,8 +10,15 @@ repositories {
 }
 
 // ── Locate Processing JARs ─────────────────────────────────────────────────
-def coreJar = file('/usr/lib/processing/lib/app/resources/core/library/core-4.5.6.jar')
-def pdeJar  = file('/usr/lib/processing/lib/app/app-4.5.6-80aaadb1fec9edce20fe7db1dad4e83e.jar')
+// PROCESSING_DIR points at a Processing install; defaults to the Arch package.
+// Jars are found by pattern so this works across versions and layouts:
+//   4.5.x: lib/app/app-<ver>-<hash>.jar, lib/app/resources/core/library/core-<ver>.jar
+//   4.3:   lib/pde.jar,                  core/library/core.jar
+def processingDir = file(System.getenv('PROCESSING_DIR') ?: '/usr/lib/processing')
+def processingJars = fileTree(processingDir) {
+    include 'lib/app/app-*.jar', 'lib/app/resources/core/library/core*.jar'
+    include 'lib/pde.jar', 'core/library/core.jar'
+}
 
 
 // ── Dependencies ───────────────────────────────────────────────────────────
@@ -22,8 +29,7 @@ configurations {
 }
 
 dependencies {
-    compileOnly files(coreJar)
-    compileOnly files(pdeJar)
+    compileOnly processingJars
 
     // java-tree-sitter (USI Seart binding — same as CppMode)
     embed 'ch.usi.si.seart:java-tree-sitter:1.9.1'

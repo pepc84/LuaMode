@@ -2,9 +2,9 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [master, main]
   pull_request:
-    branches: [main]
+    branches: [master, main]
 
 jobs:
   # ── Java mode JAR ────────────────────────────────────────────────────────
@@ -18,41 +18,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Java 11
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: '17'
           distribution: 'temurin'
 
-      - name: Cache Processing core.jar
-        id: cache-pcore
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Processing
+        id: cache-processing
         uses: actions/cache@v4
         with:
-          path: processing-core
-          key: processing-core-4.3
+          path: processing
+          key: processing-4.3-linux
 
-      - name: Download Processing core.jar
-        if: steps.cache-pcore.outputs.cache-hit != 'true'
+      - name: Download Processing (for pde/core jars)
+        if: steps.cache-processing.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          mkdir -p processing-core/core/library
-          # Try to pull core.jar from the processing4 Maven-style release.
-          # If this URL breaks, pin a new release tag here.
-          curl -fsSL -o processing-core/core/library/core.jar \
-            "https://github.com/benfry/processing4/raw/main/core/library/core.jar" \
-            2>/dev/null || true
-          # Fallback: empty stub lets the Java compile succeed (compileOnly scope).
-          if [ ! -s "processing-core/core/library/core.jar" ]; then
-            echo "Warning: could not download core.jar — using empty stub"
-            cd processing-core/core/library
-            jar cf core.jar -C /dev/null . 2>/dev/null || touch core.jar
-          fi
+          curl -fsSL -o processing.tgz \
+            https://github.com/processing/processing4/releases/download/processing-1293-4.3/processing-4.3-linux-x64.tgz
+          mkdir processing
+          tar xzf processing.tgz -C processing --strip-components=1 \
+            --wildcards '*/lib/pde.jar' '*/core/library/core.jar'
+          rm processing.tgz
+
+      - name: Build native tree-sitter lib (Linux)
+        if: runner.os == 'Linux'
+        run: native/build.sh lua
 
       - name: Test + Build mode JAR (no Rust)
+        shell: bash
         env:
           SKIP_RUNNER: "1"
-          PROCESSING_HOME: ${{ github.workspace }}/processing-core
-        run: ./gradlew test modeJar --no-daemon
+          PROCESSING_DIR: ${{ github.workspace }}/processing
+        run: gradle test modeJar --no-daemon
 
       - name: Upload LuaMode.jar
         uses: actions/upload-artifact@v4
@@ -82,6 +83,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # runner/Cargo.toml depends on ../../RustMode, i.e. a RustMode checkout
+      # next to this repo, the same layout as sketchbook/modes/ locally.
+      - name: Check out RustMode engine
+        shell: bash
+        run: git clone --depth 1 https://github.com/pepc84/RustMode.git ../RustMode
+
+      - name: Install X11 headers (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libx11-dev libxkbcommon-dev libxcursor-dev libxrandr-dev libxi-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -115,35 +126,38 @@ jobs:
     name: Distribution ZIP
     needs: [java, runner]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Java 11
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
-          java-version: '11'
+          java-version: '17'
           distribution: 'temurin'
 
-      - name: Cache Processing core.jar
-        id: cache-pcore-dist
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Cache Processing
+        id: cache-processing-dist
         uses: actions/cache@v4
         with:
-          path: processing-core
-          key: processing-core-4.3
+          path: processing
+          key: processing-4.3-linux
 
-      - name: Download Processing core.jar
-        if: steps.cache-pcore-dist.outputs.cache-hit != 'true'
+      - name: Download Processing (for pde/core jars)
+        if: steps.cache-processing-dist.outputs.cache-hit != 'true'
         run: |
-          mkdir -p processing-core/core/library
-          curl -fsSL -o processing-core/core/library/core.jar \
-            "https://github.com/benfry/processing4/raw/main/core/library/core.jar" \
-            2>/dev/null || true
-          if [ ! -s "processing-core/core/library/core.jar" ]; then
-            jar cf processing-core/core/library/core.jar -C /dev/null . 2>/dev/null || \
-            touch processing-core/core/library/core.jar
-          fi
+          curl -fsSL -o processing.tgz \
+            https://github.com/processing/processing4/releases/download/processing-1293-4.3/processing-4.3-linux-x64.tgz
+          mkdir processing
+          tar xzf processing.tgz -C processing --strip-components=1 \
+            --wildcards '*/lib/pde.jar' '*/core/library/core.jar'
+          rm processing.tgz
+
+      - name: Build native tree-sitter lib (Linux)
+        run: native/build.sh lua
 
       - name: Download runner binaries
         uses: actions/download-artifact@v4
@@ -170,8 +184,8 @@ jobs:
       - name: Build distribution ZIP
         env:
           SKIP_RUNNER: "1"
-          PROCESSING_HOME: ${{ github.workspace }}/processing-core
-        run: ./gradlew dist --no-daemon
+          PROCESSING_DIR: ${{ github.workspace }}/processing
+        run: gradle dist --no-daemon
 
       - name: Upload ZIP
         uses: actions/upload-artifact@v4
