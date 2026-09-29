@@ -17,7 +17,7 @@ import java.util.Set;
  * Processing 4 Mode plugin — Lua Mode.
  *
  * On startup:
- *   1. Extracts lib/<platform>/libjava-tree-sitter.so from the JAR and loads
+ *   1. Extracts lib/<platform>/<java-tree-sitter native lib> from the JAR and loads
  *      it (JNI glue + tree-sitter core + Lua grammar, built by native/build.sh).
  *   2. Extracts the bundled {@code luamode-runner} binary from the JAR to
  *      a persistent per-version cache directory so {@link LuaBuild} can find
@@ -55,7 +55,8 @@ public class LuaMode extends Mode {
 
     // ── tree-sitter native library ────────────────────────────────────────
     //
-    // lib/<platform>/libjava-tree-sitter.so is built by native/build.sh. It
+    // lib/<platform>/libjava-tree-sitter.{so,dylib} or java-tree-sitter.dll is
+    // built by native/build.sh (CI builds all four platforms). It
     // contains the java-tree-sitter JNI glue, tree-sitter core and the Lua
     // grammar, all in one file, so there is nothing else to load.
     //
@@ -65,7 +66,8 @@ public class LuaMode extends Mode {
     private static synchronized void preloadTreeSitterNative(File modeFolder) {
         if (nativeLoaded) return;
         try {
-            loadBundledLib("libjava-tree-sitter.so", "java-tree-sitter");
+            // libjava-tree-sitter.so / libjava-tree-sitter.dylib / java-tree-sitter.dll
+            loadBundledLib(System.mapLibraryName("java-tree-sitter"), "java-tree-sitter");
             nativeLoaded = true;
         } catch (Throwable e) {
             System.err.println("[LuaMode] Failed to load tree-sitter native: " + e);

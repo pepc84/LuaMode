@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [master, main]
+    tags: ['v*']          # pushing a v* tag publishes a GitHub Release
   pull_request:
     branches: [master, main]
 
@@ -57,6 +58,47 @@ jobs:
         with:
           name: LuaMode-jar
           path: mode/LuaMode.jar
+
+  # ── tree-sitter native lib, one per platform ─────────────────────────────
+  # native/build.sh compiles java-tree-sitter + tree-sitter + the Lua grammar
+  # into one shared lib. Shipping all four in the jar means nobody installing
+  # the mode needs a compiler.
+  native:
+    name: Native lib (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest,  platform: linux-x86_64,   arch: x86_64 }
+          - { os: macos-latest,   platform: macos-aarch64,  arch: aarch64 }
+          - { os: macos-latest,   platform: macos-x86_64,   arch: x86_64 }   # cross-built on Apple Silicon
+          - { os: windows-latest, platform: windows-x86_64, arch: x86_64 }   # MinGW g++, static runtime
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Java 17 (JNI headers)
+        uses: actions/setup-java@v5
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Build
+        shell: bash
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          # Git Bash on Windows needs a POSIX path for JAVA_HOME
+          if command -v cygpath >/dev/null; then export JAVA_HOME=$(cygpath -u "$JAVA_HOME"); fi
+          native/build.sh lua
+
+      - name: Upload
+        uses: actions/upload-artifact@v6
+        with:
+          name: native-${{ matrix.platform }}
+          # the common root is lib/, so the artifact keeps <platform>/<file>
+          path: lib/*/*java-tree-sitter*
+          if-no-files-found: error
 
   # ── Rust runner ──────────────────────────────────────────────────────────
   runner:
@@ -121,9 +163,9 @@ jobs:
   # ── Distribution ZIP ─────────────────────────────────────────────────────
   dist:
     name: Distribution ZIP
-    needs: [java, runner]
+    needs: [java, native, runner]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - uses: actions/checkout@v5
@@ -153,8 +195,20 @@ jobs:
             --wildcards '*/lib/pde.jar' '*/core/library/core.jar'
           rm processing.tgz
 
-      - name: Build native tree-sitter lib (Linux)
-        run: native/build.sh lua
+      - name: Download native libs (all platforms)
+        uses: actions/download-artifact@v6
+        with:
+          pattern: native-*
+          path: lib/
+          merge-multiple: true
+
+      - name: Check every platform's native lib is there
+        run: |
+          for f in linux-x86_64/libjava-tree-sitter.so macos-aarch64/libjava-tree-sitter.dylib \
+                   macos-x86_64/libjava-tree-sitter.dylib windows-x86_64/java-tree-sitter.dll; do
+            test -s "lib/$f" || { echo "missing lib/$f"; exit 1; }
+            echo "ok lib/$f"
+          done
 
       - name: Download runner binaries
         uses: actions/download-artifact@v6
@@ -189,3 +243,28 @@ jobs:
         with:
           name: LuaMode-dist
           path: build/distributions/LuaMode-*.zip
+
+  # ── GitHub Release (on v* tags) ──────────────────────────────────────────
+  # The ZIP has the mode jar, all four native libs and all four runners, so
+  # users unzip it into sketchbook/modes/ and never compile anything.
+  release:
+    name: Release
+    needs: dist
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download ZIP
+        uses: actions/download-artifact@v6
+        with:
+          name: LuaMode-dist
+          path: dist/
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip \
+            --repo "$GITHUB_REPOSITORY" --title "LuaMode $GITHUB_REF_NAME" --generate-notes
