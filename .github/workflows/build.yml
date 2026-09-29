@@ -53,7 +53,7 @@ jobs:
         run: gradle test modeJar --no-daemon
 
       - name: Upload LuaMode.jar
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: LuaMode-jar
           path: mode/LuaMode.jar
@@ -111,7 +111,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Upload binary
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: runner-${{ matrix.platform }}
           path: |
@@ -157,7 +157,7 @@ jobs:
         run: native/build.sh lua
 
       - name: Download runner binaries
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           pattern: runner-*
           path: runners/
@@ -185,7 +185,7 @@ jobs:
         run: gradle dist --no-daemon
 
       - name: Upload ZIP
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: LuaMode-dist
           path: build/distributions/LuaMode-*.zip
