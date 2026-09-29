@@ -67,6 +67,7 @@ jobs:
     name: Native lib (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false      # one platform failing shouldn't hide the others' results
       matrix:
         include:
           - { os: ubuntu-latest,  platform: linux-x86_64,   arch: x86_64 }

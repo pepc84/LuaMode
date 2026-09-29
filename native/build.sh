@@ -104,7 +104,7 @@ case $TARGET_OS in
   macos)
     if [ "$ARCH" = aarch64 ]; then MARCH=arm64; else MARCH=x86_64; fi
     CFLAGS+=(-fPIC -arch "$MARCH" -mmacosx-version-min=11.0)
-    LDFLAGS=(-dynamiclib -Wl,-undefined,error) ;;
+    LDFLAGS=(-dynamiclib) ;;   # undefined symbols are already a link error on macOS
   windows)
     # static runtime: the DLL has to load on machines without MinGW installed
     LDFLAGS=(-shared -static-libgcc -static-libstdc++ -Wl,--no-undefined -s) ;;
@@ -151,7 +151,7 @@ case $TARGET_OS in
     DEPS=$(ldd "$OUT" 2>/dev/null || true) ;;
   macos)
     SYMS=$(nm -gU "$OUT")
-    DEPS=$(otool -L "$OUT") ;;
+    DEPS=$(otool -L "$OUT" | tail -n +2) ;;   # line 1 is the file itself
   windows)
     OBJDUMP=${OBJDUMP:-objdump}
     command -v "$OBJDUMP" >/dev/null || OBJDUMP=x86_64-w64-mingw32-objdump
@@ -163,7 +163,8 @@ grep -qE "[] _]$GRAMMAR_JNI\$" <<<"$SYMS" || { echo "$GRAMMAR_JNI not exported" 
 if grep -qE "[] _]ts_[a-z_]+\$" <<<"$SYMS"; then
   echo "tree-sitter symbols leaked into the export table" >&2; exit 1
 fi
-if grep -qi "tree-sitter" <<<"$DEPS"; then
+# match a real libtree-sitter (not our own libjava-tree-sitter)
+if grep -qiE "(^|[/[:space:]])libtree-sitter[.-]" <<<"$DEPS"; then
   echo "linked against a system libtree-sitter, expected static" >&2; exit 1
 fi
 if [ "$TARGET_OS" = windows ] && grep -qiE "libstdc\+\+|libgcc_s|libwinpthread" <<<"$DEPS"; then
