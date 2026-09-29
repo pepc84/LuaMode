@@ -14,19 +14,19 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       - name: Cache Processing
         id: cache-processing
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: processing
           key: processing-4.3-linux
@@ -53,7 +53,7 @@ jobs:
         run: gradle test modeJar --no-daemon
 
       - name: Upload LuaMode.jar
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: LuaMode-jar
           path: mode/LuaMode.jar
@@ -79,7 +79,7 @@ jobs:
             platform: windows-x86_64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # runner/Cargo.toml depends on ../../RustMode, i.e. a RustMode checkout
       # next to this repo, the same layout as sketchbook/modes/ locally.
@@ -97,7 +97,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -111,7 +111,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: runner-${{ matrix.platform }}
           path: |
@@ -126,19 +126,19 @@ jobs:
     if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       - name: Cache Processing
         id: cache-processing-dist
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: processing
           key: processing-4.3-linux
@@ -157,7 +157,7 @@ jobs:
         run: native/build.sh lua
 
       - name: Download runner binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: runner-*
           path: runners/
@@ -185,7 +185,7 @@ jobs:
         run: gradle dist --no-daemon
 
       - name: Upload ZIP
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: LuaMode-dist
           path: build/distributions/LuaMode-*.zip
