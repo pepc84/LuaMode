@@ -243,7 +243,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: LuaMode-dist
-          path: build/distributions/LuaMode-*.zip
+          path: build/distributions/LuaMode.zip
 
   # ── GitHub Release (on v* tags) ──────────────────────────────────────────
   # The ZIP has the mode jar, all four native libs and all four runners, so

@@ -176,8 +176,7 @@ modeJar.dependsOn buildRunner
 task dist(type: Zip) {
     dependsOn modeJar
 
-    archiveBaseName    = 'LuaMode'
-    archiveVersion     = version
+    archiveFileName    = 'LuaMode.zip'   // same name every release, so download links never change
     destinationDirectory = file('build/distributions')
 
     into('LuaMode') {
