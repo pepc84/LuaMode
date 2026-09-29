@@ -1,0 +1,218 @@
+plugins {
+    id 'java'
+}
+
+group   = 'processing.mode.lua'
+version = '0.1.0'
+
+repositories {
+    mavenCentral()
+}
+
+// ── Locate Processing JARs ─────────────────────────────────────────────────
+def coreJar = file('/usr/lib/processing/lib/app/resources/core/library/core-4.5.6.jar')
+def pdeJar  = file('/usr/lib/processing/lib/app/app-4.5.6-80aaadb1fec9edce20fe7db1dad4e83e.jar')
+
+
+// ── Dependencies ───────────────────────────────────────────────────────────
+configurations {
+    embed          // JARs that get merged into the fat jar
+    compileOnly
+    implementation.extendsFrom embed
+}
+
+dependencies {
+    compileOnly files(coreJar)
+    compileOnly files(pdeJar)
+
+    // java-tree-sitter (USI Seart binding — same as CppMode)
+    embed 'ch.usi.si.seart:java-tree-sitter:1.9.1'
+
+    // Tests
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly     'org.junit.platform:junit-platform-launcher'
+}
+
+test {
+    useJUnitPlatform()
+
+    // Add the platform-specific native library directory to java.library.path
+    // so LuaLinterTest can load libtree-sitter-lua when the library is present.
+    // The test gracefully skips when the library is absent (CI without native libs).
+    def nativeDir = file("lib/${detectRunnerPlatform()}")
+    if (nativeDir.exists()) {
+        jvmArgs "-Djava.library.path=${nativeDir.absolutePath}"
+    }
+}
+
+// ── Source / target ────────────────────────────────────────────────────────
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+sourceSets.main.java.srcDirs = ['src/java']
+sourceSets.test.java.srcDirs = ['src/test/java']
+
+// ── Fat jar → mode/LuaMode.jar ─────────────────────────────────────────────
+task modeJar(type: Jar) {
+    archiveFileName = 'LuaMode.jar'
+    destinationDirectory = file('mode')
+
+    // our classes
+    from sourceSets.main.output
+
+    // flatten embedded dependency jars
+    from({
+        configurations.embed.collect { it.isDirectory() ? it : zipTree(it) }
+    }) {
+        exclude '*.so', '*.dylib', '*.dll'
+    }
+
+    // bundle native grammars: lib/<platform>/libtree-sitter-lua.so (etc.)
+    from('lib') {
+        into 'lib'
+    }
+
+    // queries
+    from('queries') {
+        into 'queries'
+    }
+
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    manifest {
+        attributes(
+            'Implementation-Title'  : 'Processing Lua Mode',
+            'Implementation-Version': version,
+            'Main-Class'            : 'processing.mode.lua.LuaMode'
+        )
+    }
+}
+
+build.dependsOn modeJar
+
+// ── Build luamode-runner (Rust binary) ────────────────────────────────────
+//
+// Runs `cargo build --release` inside runner/ and copies the resulting binary
+// into mode/runner/<platform>/luamode-runner so LuaBuild can find it at runtime.
+//
+// Set SKIP_RUNNER=1 in the environment to skip this step (e.g. when iterating
+// on Java-only changes and Rust is not installed on the build machine).
+//
+// The runner is OPTIONAL for building the mode JAR — LuaBuild prints a clear
+// error at run time if it cannot find the binary.  This lets CI build the JAR
+// without Rust toolchain installed.
+
+def runnerDir     = file('runner')
+def runnerSrcExe  = file("runner/target/release/luamode-runner${isWindows() ? '.exe' : ''}")
+
+def targetPlatform = detectRunnerPlatform()
+
+task buildRunner(type: Exec) {
+    onlyIf { !System.getenv('SKIP_RUNNER') && hasRust() }
+
+    workingDir runnerDir
+    commandLine 'cargo', 'build', '--release'
+
+    inputs.dir  file('runner/src')
+    inputs.file file('runner/Cargo.toml')
+    outputs.file runnerSrcExe
+
+    doLast {
+        def destDir = file("mode/runner/${targetPlatform}")
+        destDir.mkdirs()
+        def destExe = new File(destDir, runnerSrcExe.name)
+        java.nio.file.Files.copy(
+            runnerSrcExe.toPath(), destExe.toPath(),
+            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        destExe.setExecutable(true)
+        println "luamode-runner → mode/runner/${targetPlatform}/${runnerSrcExe.name}"
+    }
+}
+
+// ── Also bundle the runner binary inside the JAR ──────────────────────────
+// LuaMode.java can extract it to a temp location on first run if needed,
+// exactly as it does for libtree-sitter-lua.  We put it at:
+//   runner/<platform>/luamode-runner[.exe]
+// inside the JAR's resource tree.
+modeJar.configure {
+    from("mode/runner") {
+        into 'runner'
+    }
+}
+modeJar.dependsOn buildRunner
+
+// ── Distribution ZIP ──────────────────────────────────────────────────────
+//
+// Produces build/distributions/LuaMode-<version>.zip in the layout
+// Processing expects when installing a mode from a ZIP:
+//
+//   LuaMode/
+//     mode.properties
+//     keywords.txt
+//     mode/
+//       LuaMode.jar
+//       runner/<platform>/luamode-runner[.exe]
+//     examples/
+//       Basics/Hello World/Hello World.lua
+//       ...
+//     lib/
+//       <platform>/libtree-sitter-lua.{so,dylib,dll}
+//
+// The lib/ trees are needed at mode-install time so LuaMode can load the
+// native grammar library without extracting it from the JAR each run.
+// The lua/ tree (processing.lua + backends/) is deployed as files — not just
+// in the JAR — so LuaExporter.exportLove2d() can copy them at runtime.
+
+task dist(type: Zip) {
+    dependsOn modeJar
+
+    archiveBaseName    = 'LuaMode'
+    archiveVersion     = version
+    destinationDirectory = file('build/distributions')
+
+    into('LuaMode') {
+        from('mode.properties')
+        from('keywords.txt')
+
+        into('mode') {
+            from('mode') { include 'LuaMode.jar' }
+            from('mode') { include 'runner/**'   }
+            from('mode') { include 'lua/**'      }  // processing.lua + backends/
+        }
+
+        into('examples') {
+            from('examples')
+        }
+
+        into('lib') {
+            from('lib')
+        }
+    }
+}
+
+// ── Utility functions ─────────────────────────────────────────────────────
+
+def isWindows() {
+    System.getProperty('os.name', '').toLowerCase().contains('win')
+}
+
+def hasRust() {
+    try {
+        def result = ['cargo', '--version'].execute()
+        result.waitFor()
+        return result.exitValue() == 0
+    } catch (Exception ignored) {
+        return false
+    }
+}
+
+def detectRunnerPlatform() {
+    def os   = System.getProperty('os.name', '').toLowerCase()
+    def arch = System.getProperty('os.arch', '').toLowerCase()
+    def a    = (arch.contains('aarch64') || arch.contains('arm64')) ? 'aarch64' : 'x86_64'
+    if (os.contains('mac'))  return "macos-${a}"
+    if (os.contains('win'))  return "windows-${a}"
+    return "linux-${a}"
+}

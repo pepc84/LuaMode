@@ -1,0 +1,180 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Java mode JAR ────────────────────────────────────────────────────────
+  java:
+    name: Java (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Cache Processing core.jar
+        id: cache-pcore
+        uses: actions/cache@v4
+        with:
+          path: processing-core
+          key: processing-core-4.3
+
+      - name: Download Processing core.jar
+        if: steps.cache-pcore.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p processing-core/core/library
+          # Try to pull core.jar from the processing4 Maven-style release.
+          # If this URL breaks, pin a new release tag here.
+          curl -fsSL -o processing-core/core/library/core.jar \
+            "https://github.com/benfry/processing4/raw/main/core/library/core.jar" \
+            2>/dev/null || true
+          # Fallback: empty stub lets the Java compile succeed (compileOnly scope).
+          if [ ! -s "processing-core/core/library/core.jar" ]; then
+            echo "Warning: could not download core.jar — using empty stub"
+            cd processing-core/core/library
+            jar cf core.jar -C /dev/null . 2>/dev/null || touch core.jar
+          fi
+
+      - name: Test + Build mode JAR (no Rust)
+        env:
+          SKIP_RUNNER: "1"
+          PROCESSING_HOME: ${{ github.workspace }}/processing-core
+        run: ./gradlew test modeJar --no-daemon
+
+      - name: Upload LuaMode.jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: LuaMode-jar-${{ matrix.os }}
+          path: mode/LuaMode.jar
+
+  # ── Rust runner ──────────────────────────────────────────────────────────
+  runner:
+    name: Runner (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x86_64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            platform: macos-x86_64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: macos-aarch64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: windows-x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            runner/target
+          key: cargo-${{ matrix.target }}-${{ hashFiles('runner/Cargo.toml', 'runner/Cargo.lock') }}
+          restore-keys: cargo-${{ matrix.target }}-
+
+      - name: Build luamode-runner
+        working-directory: runner
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-${{ matrix.platform }}
+          path: |
+            runner/target/${{ matrix.target }}/release/luamode-runner
+            runner/target/${{ matrix.target }}/release/luamode-runner.exe
+
+  # ── Distribution ZIP ─────────────────────────────────────────────────────
+  dist:
+    name: Distribution ZIP
+    needs: [java, runner]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Cache Processing core.jar
+        id: cache-pcore-dist
+        uses: actions/cache@v4
+        with:
+          path: processing-core
+          key: processing-core-4.3
+
+      - name: Download Processing core.jar
+        if: steps.cache-pcore-dist.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p processing-core/core/library
+          curl -fsSL -o processing-core/core/library/core.jar \
+            "https://github.com/benfry/processing4/raw/main/core/library/core.jar" \
+            2>/dev/null || true
+          if [ ! -s "processing-core/core/library/core.jar" ]; then
+            jar cf processing-core/core/library/core.jar -C /dev/null . 2>/dev/null || \
+            touch processing-core/core/library/core.jar
+          fi
+
+      - name: Download runner binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: runner-*
+          path: runners/
+
+      - name: Stage runner binaries
+        run: |
+          mkdir -p mode/runner/linux-x86_64
+          mkdir -p mode/runner/macos-x86_64
+          mkdir -p mode/runner/macos-aarch64
+          mkdir -p mode/runner/windows-x86_64
+
+          cp runners/runner-linux-x86_64/luamode-runner   mode/runner/linux-x86_64/
+          cp runners/runner-macos-x86_64/luamode-runner   mode/runner/macos-x86_64/
+          cp runners/runner-macos-aarch64/luamode-runner  mode/runner/macos-aarch64/
+          cp runners/runner-windows-x86_64/luamode-runner.exe mode/runner/windows-x86_64/
+
+          chmod +x mode/runner/linux-x86_64/luamode-runner
+          chmod +x mode/runner/macos-x86_64/luamode-runner
+          chmod +x mode/runner/macos-aarch64/luamode-runner
+
+      - name: Build distribution ZIP
+        env:
+          SKIP_RUNNER: "1"
+          PROCESSING_HOME: ${{ github.workspace }}/processing-core
+        run: ./gradlew dist --no-daemon
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: LuaMode-dist
+          path: build/distributions/LuaMode-*.zip

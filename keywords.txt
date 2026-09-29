@@ -1,0 +1,207 @@
+# Processing Lua Mode — keywords.txt
+# Format: KEYWORD <tab> TOKEN_TYPE
+# TOKEN_TYPE: KEYWORD1 (reserved), KEYWORD2 (functions), LITERAL1 (literals), LITERAL2 (constants)
+
+# ── Lua keywords ──────────────────────────────────────────────────────────
+and	KEYWORD1
+break	KEYWORD1
+do	KEYWORD1
+else	KEYWORD1
+elseif	KEYWORD1
+end	KEYWORD1
+false	KEYWORD1
+for	KEYWORD1
+function	KEYWORD1
+goto	KEYWORD1
+if	KEYWORD1
+in	KEYWORD1
+local	KEYWORD1
+nil	KEYWORD1
+not	KEYWORD1
+or	KEYWORD1
+repeat	KEYWORD1
+return	KEYWORD1
+then	KEYWORD1
+true	KEYWORD1
+until	KEYWORD1
+while	KEYWORD1
+
+# ── Processing lifecycle ──────────────────────────────────────────────────
+setup	KEYWORD2
+draw	KEYWORD2
+mousePressed	KEYWORD2
+mouseReleased	KEYWORD2
+mouseClicked	KEYWORD2
+mouseMoved	KEYWORD2
+mouseDragged	KEYWORD2
+keyPressed	KEYWORD2
+keyReleased	KEYWORD2
+keyTyped	KEYWORD2
+
+# ── Processing drawing API ────────────────────────────────────────────────
+size	KEYWORD2
+background	KEYWORD2
+fill	KEYWORD2
+noFill	KEYWORD2
+stroke	KEYWORD2
+noStroke	KEYWORD2
+strokeWeight	KEYWORD2
+strokeCap	KEYWORD2
+strokeJoin	KEYWORD2
+rect	KEYWORD2
+ellipse	KEYWORD2
+circle	KEYWORD2
+arc	KEYWORD2
+line	KEYWORD2
+point	KEYWORD2
+triangle	KEYWORD2
+quad	KEYWORD2
+bezier	KEYWORD2
+curve	KEYWORD2
+beginShape	KEYWORD2
+endShape	KEYWORD2
+vertex	KEYWORD2
+bezierVertex	KEYWORD2
+curveVertex	KEYWORD2
+image	KEYWORD2
+loadImage	KEYWORD2
+tint	KEYWORD2
+noTint	KEYWORD2
+text	KEYWORD2
+textSize	KEYWORD2
+textAlign	KEYWORD2
+textFont	KEYWORD2
+loadFont	KEYWORD2
+push	KEYWORD2
+pop	KEYWORD2
+pushMatrix	KEYWORD2
+popMatrix	KEYWORD2
+pushStyle	KEYWORD2
+popStyle	KEYWORD2
+translate	KEYWORD2
+rotate	KEYWORD2
+scale	KEYWORD2
+shearX	KEYWORD2
+shearY	KEYWORD2
+resetMatrix	KEYWORD2
+colorMode	KEYWORD2
+color	KEYWORD2
+red	KEYWORD2
+green	KEYWORD2
+blue	KEYWORD2
+alpha	KEYWORD2
+hue	KEYWORD2
+saturation	KEYWORD2
+brightness	KEYWORD2
+lerpColor	KEYWORD2
+
+# ── Processing math ───────────────────────────────────────────────────────
+map	KEYWORD2
+lerp	KEYWORD2
+constrain	KEYWORD2
+dist	KEYWORD2
+mag	KEYWORD2
+norm	KEYWORD2
+sq	KEYWORD2
+sqrt	KEYWORD2
+pow	KEYWORD2
+abs	KEYWORD2
+ceil	KEYWORD2
+floor	KEYWORD2
+round	KEYWORD2
+min	KEYWORD2
+max	KEYWORD2
+sin	KEYWORD2
+cos	KEYWORD2
+tan	KEYWORD2
+asin	KEYWORD2
+acos	KEYWORD2
+atan	KEYWORD2
+atan2	KEYWORD2
+degrees	KEYWORD2
+radians	KEYWORD2
+noise	KEYWORD2
+noiseDetail	KEYWORD2
+noiseSeed	KEYWORD2
+random	KEYWORD2
+randomSeed	KEYWORD2
+randomGaussian	KEYWORD2
+
+# ── Processing time / control ─────────────────────────────────────────────
+millis	KEYWORD2
+second	KEYWORD2
+minute	KEYWORD2
+hour	KEYWORD2
+day	KEYWORD2
+month	KEYWORD2
+year	KEYWORD2
+frameRate	KEYWORD2
+loop	KEYWORD2
+noLoop	KEYWORD2
+redraw	KEYWORD2
+exit	KEYWORD2
+
+# ── Processing input ──────────────────────────────────────────────────────
+mouseButton	KEYWORD2
+pmouseX	KEYWORD2
+pmouseY	KEYWORD2
+mouseIsPressed	KEYWORD2
+keyIsPressed	KEYWORD2
+key	KEYWORD2
+keyCode	KEYWORD2
+
+# ── Processing constants ──────────────────────────────────────────────────
+PI	LITERAL2
+TWO_PI	LITERAL2
+HALF_PI	LITERAL2
+QUARTER_PI	LITERAL2
+TAU	LITERAL2
+E	LITERAL2
+LEFT	LITERAL2
+RIGHT	LITERAL2
+CENTER	LITERAL2
+TOP	LITERAL2
+BOTTOM	LITERAL2
+BASELINE	LITERAL2
+RADIUS	LITERAL2
+CORNER	LITERAL2
+CORNERS	LITERAL2
+OPEN	LITERAL2
+CLOSE	LITERAL2
+POINTS	LITERAL2
+LINES	LITERAL2
+TRIANGLES	LITERAL2
+TRIANGLE_STRIP	LITERAL2
+TRIANGLE_FAN	LITERAL2
+QUADS	LITERAL2
+QUAD_STRIP	LITERAL2
+POLYGON	LITERAL2
+RGB	LITERAL2
+HSB	LITERAL2
+ROUND	LITERAL2
+SQUARE	LITERAL2
+PROJECT	LITERAL2
+MITER	LITERAL2
+BEVEL	LITERAL2
+UP	LITERAL2
+DOWN	LITERAL2
+ENTER	LITERAL2
+RETURN	LITERAL2
+BACKSPACE	LITERAL2
+TAB	LITERAL2
+DELETE	LITERAL2
+ESC	LITERAL2
+CODED	LITERAL2
+ALT	LITERAL2
+CONTROL	LITERAL2
+SHIFT	LITERAL2
+
+# ── Processing environment globals ────────────────────────────────────────
+width	LITERAL1
+height	LITERAL1
+mouseX	LITERAL1
+mouseY	LITERAL1
+frameCount	LITERAL1
+focused	LITERAL1
+displayWidth	LITERAL1
+displayHeight	LITERAL1

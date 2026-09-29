@@ -1,0 +1,29 @@
+[package]
+name    = "luamode-runner"
+version = "0.1.0"
+edition = "2021"
+
+# The runner is a thin host: it owns the event loop (via the processing App
+# builder) and exposes every Processing function to Lua via mlua.
+#
+# Build with:
+#   cargo build --release
+# Copy the resulting binary into LuaMode/mode/runner/<platform>/luamode-runner
+# so LuaBuild can locate and invoke it.
+
+[[bin]]
+name = "luamode-runner"
+path = "src/main.rs"
+
+[dependencies]
+# mlua with the Lua 5.4 feature; vendored so the binary is self-contained.
+mlua = { version = "0.9", features = ["lua54", "vendored"] }
+
+# The drawing engine is RustMode's `processing` crate (sketchbook/modes/RustMode),
+# so Rust and Lua sketches share one renderer. It's imported as `engine`;
+# src/processing.rs adapts it to the calls the Lua bindings make.
+engine = { package = "processing", path = "../../RustMode" }
+
+[profile.release]
+opt-level = 3
+strip     = true

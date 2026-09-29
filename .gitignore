@@ -1,0 +1,13 @@
+build/
+.gradle/
+native/.build/
+runner/target/
+mode/*.jar
+mode/runner/
+lib/**/*.so
+lib/**/*.dylib
+lib/**/*.dll
+*.log
+core.*
+hs_err_pid*
+frame.png
