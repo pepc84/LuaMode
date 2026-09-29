@@ -30,6 +30,8 @@ configurations {
 
 dependencies {
     compileOnly processingJars
+    // tests load Processing classes (e.g. TokenMarker), so they need the jars at runtime too
+    testImplementation processingJars
 
     // java-tree-sitter (USI Seart binding — same as CppMode)
     embed 'ch.usi.si.seart:java-tree-sitter:1.9.1'
