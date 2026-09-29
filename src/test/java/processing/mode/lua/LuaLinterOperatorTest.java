@@ -117,7 +117,8 @@ class LuaLinterOperatorTest {
     void bangEqualNotDouble_flagged_once() {
         List<LuaProblem> ps = scan("if x != y then end\n");
         long neqCount  = ps.stream().filter(p -> p.getMessage().contains("~=")).count();
-        long bangCount = ps.stream().filter(p -> p.getMessage().contains("not")).count();
+        // match the '!' warning itself; the '!=' warning's text also contains "not"
+        long bangCount = ps.stream().filter(p -> p.getMessage().contains("Use 'not'")).count();
         assertEquals(1, neqCount,  "!= should produce exactly one ~= warning");
         assertEquals(0, bangCount, "! in != should NOT also produce a 'not' warning");
     }

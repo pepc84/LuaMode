@@ -19,11 +19,12 @@ public final class LuaErrorMapper {
 
     // Matches:  <path>:<line>: <message>
     //
-    // On Windows paths look like C:\tmp\foo.lua:12: ... — the drive letter colon
-    // trips up a naive [^:]+ match, so we anchor on the last :<digits>: occurrence
-    // in the line instead of the first colon.
+    // The path is matched lazily so the FIRST :<digits>: wins; a message like
+    // "error at 12:30:00" must not be read as line 30. Windows paths still work:
+    // in C:\tmp\foo.lua:12: the drive colon isn't followed by digits, so the
+    // lazy match moves past it to :12:.
     private static final Pattern LUA_ERROR =
-        Pattern.compile("^.+:(\\d+):\\s*(.+)$");
+        Pattern.compile("^(.+?):(\\d+):\\s*(.+)$");
 
     private LuaErrorMapper() {}
 
@@ -39,11 +40,14 @@ public final class LuaErrorMapper {
         List<LuaProblem> problems = new ArrayList<>();
 
         for (String raw : output.lines().toList()) {
+            // Everything after "stack traceback:" repeats locations of the error
+            // already reported; reporting them again would duplicate it.
+            if (raw.trim().equals("stack traceback:")) break;
             Matcher m = LUA_ERROR.matcher(raw.trim());
             if (!m.matches()) continue;
 
-            int    combinedLine = Integer.parseInt(m.group(1)) - 1; // convert to 0-based
-            String message      = m.group(2).trim();
+            int    combinedLine = Integer.parseInt(m.group(2)) - 1; // convert to 0-based
+            String message      = m.group(3).trim();
 
             int userLine = combinedLine - headerLines;
             if (userLine < 0) {
@@ -80,6 +84,7 @@ public final class LuaErrorMapper {
     }
 
     private static int lineInTab(int userLine, int[] tabStartLines, int headerLines) {
+        if (tabStartLines.length == 0) return userLine;   // no tab info: whole sketch is one tab
         int tab = tabIndex(userLine, tabStartLines, headerLines);
         return userLine - (tabStartLines[tab] - headerLines);
     }
