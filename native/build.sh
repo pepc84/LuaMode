@@ -107,7 +107,7 @@ case $TARGET_OS in
     LDFLAGS=(-dynamiclib) ;;   # undefined symbols are already a link error on macOS
   windows)
     # static runtime: the DLL has to load on machines without MinGW installed
-    LDFLAGS=(-shared -static-libgcc -static-libstdc++ -Wl,--no-undefined -s) ;;
+    LDFLAGS=(-shared -static -Wl,--no-undefined -s) ;;   # fully static: no libwinpthread-1.dll
 esac
 
 TS=$JTS/tree-sitter/lib
