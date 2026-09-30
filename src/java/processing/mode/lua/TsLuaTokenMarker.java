@@ -4,7 +4,6 @@ import ch.usi.si.seart.treesitter.Language;
 import ch.usi.si.seart.treesitter.Node;
 import ch.usi.si.seart.treesitter.Query;
 import ch.usi.si.seart.treesitter.QueryCapture;
-import ch.usi.si.seart.treesitter.QueryCapture;
 import ch.usi.si.seart.treesitter.QueryCursor;
 import ch.usi.si.seart.treesitter.QueryMatch;
 
@@ -16,7 +15,12 @@ import javax.swing.text.Segment;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -56,6 +60,7 @@ public class TsLuaTokenMarker extends TokenMarker {
     // ── Linter ────────────────────────────────────────────────────────────
     private final LuaLinter linter = new LuaLinter();
     private volatile Consumer<List<LuaProblem>> lintConsumer;
+    private volatile Runnable repaintHook;
 
     // The token marker always receives a single tab's source, so tabStartLines
     // is always {0} here.  LuaErrorMapper handles multi-tab mapping separately.
@@ -68,6 +73,14 @@ public class TsLuaTokenMarker extends TokenMarker {
 
     // ── Cached query ──────────────────────────────────────────────────────
     private volatile Query tsQuery;
+
+    // java-tree-sitter 1.9.1 does not evaluate query predicates, so a pattern
+    // like ((identifier) @function.builtin (#match? @function.builtin "^(fill|rect)$"))
+    // matches EVERY identifier. We read the #match? regexes out of the .scm
+    // ourselves and check captured text against them. Capture name -> regexes.
+    private volatile Map<String, List<Pattern>> matchPredicates = Map.of();
+    private static final Pattern MATCH_PREDICATE =
+        Pattern.compile("\\(#match\\?\\s+@([\\w.]+)\\s+\"((?:[^\"\\\\]|\\\\.)*)\"\\s*\\)");
 
     public TsLuaTokenMarker() {
         ScheduledThreadPoolExecutor ex =
@@ -127,6 +140,15 @@ public class TsLuaTokenMarker extends TokenMarker {
         this.lintConsumer = consumer;
     }
 
+    /**
+     * Called (on the highlighter thread) after new highlights are ready. The
+     * document doesn't change when colors do, so without this the text area
+     * wouldn't repaint until something else made it.
+     */
+    public void setRepaintHook(Runnable hook) {
+        this.repaintHook = hook;
+    }
+
     // ── Invalidation / rebuild ────────────────────────────────────────────
 
     public synchronized void invalidate(SyntaxDocument doc) {
@@ -152,7 +174,9 @@ public class TsLuaTokenMarker extends TokenMarker {
         try (TsLuaEngine.ParseResult pr = TsLuaEngine.get().parse(src)) {
             if (pr == null) return;
 
-            byte[] hl = new byte[src.length()];
+            byte[] hl   = new byte[src.length()];
+            byte[] rank = new byte[src.length()];   // priority of what's painted at each char
+            Map<String, List<Pattern>> preds = matchPredicates;
 
             try (QueryCursor cursor = pr.root.walk(q)) {
                 for (QueryMatch match : cursor) {
@@ -162,11 +186,15 @@ public class TsLuaTokenMarker extends TokenMarker {
                         String captureName = entry.getKey().getName();
                         byte   tokType     = highlightNameToToken(captureName);
                         if (tokType == Token.NULL) continue;
+                        byte   r           = captureRank(captureName);
+                        List<Pattern> regexes = preds.get(captureName);
                         for (Node node : entry.getValue()) {
-                            int start = node.getStartByte();
-                            int end   = node.getEndByte();
-                            for (int b = start; b < end && b < hl.length; b++) {
-                                hl[b] = tokType;
+                            // offsets are Java char indexes (the parser reads UTF-16)
+                            int start = Math.min(node.getStartByte(), src.length());
+                            int end   = Math.min(node.getEndByte(),   src.length());
+                            if (regexes != null && !matchesAny(regexes, src.substring(start, end))) continue;
+                            for (int b = start; b < end; b++) {
+                                if (r >= rank[b]) { hl[b] = tokType; rank[b] = r; }
                             }
                         }
                     }
@@ -187,8 +215,8 @@ public class TsLuaTokenMarker extends TokenMarker {
                 consumer.accept(problems);
             }
 
-            // The SyntaxDocument fires change events to its listeners (including
-            // the text area), which handles repainting automatically.
+            Runnable hook = repaintHook;
+            if (hook != null) hook.run();
         }
     }
 
@@ -229,6 +257,7 @@ public class TsLuaTokenMarker extends TokenMarker {
             if (tsQuery != null) return tsQuery;
             try {
                 String scm = loadResource("/queries/highlights.scm");
+                matchPredicates = parseMatchPredicates(scm);
                 tsQuery = Query.getFor(Language.LUA, scm);
             } catch (Exception e) {
                 System.err.println("[LuaMode] Failed to load highlights.scm: " + e.getMessage());
@@ -242,6 +271,40 @@ public class TsLuaTokenMarker extends TokenMarker {
             if (in == null) throw new IOException("Resource not found: " + path);
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
+    }
+
+    // ── Predicates and priority ───────────────────────────────────────────
+
+    /** Package-private for tests. All #match? regexes in the query, by capture name. */
+    static Map<String, List<Pattern>> parseMatchPredicates(String scm) {
+        Map<String, List<Pattern>> out = new HashMap<>();
+        Matcher m = MATCH_PREDICATE.matcher(scm);
+        while (m.find()) {
+            String regex = m.group(2).replace("\\\\", "\\");   // unescape the .scm string
+            out.computeIfAbsent(m.group(1), k -> new ArrayList<>()).add(Pattern.compile(regex));
+        }
+        return out;
+    }
+
+    private static boolean matchesAny(List<Pattern> regexes, String text) {
+        for (Pattern p : regexes) if (p.matcher(text).find()) return true;
+        return false;
+    }
+
+    /**
+     * Where captures overlap, the higher rank wins: a comment or string is
+     * never recolored by something inside it, and a Processing builtin like
+     * size() stays a builtin even though the call pattern also matches it.
+     */
+    private static byte captureRank(String name) {
+        return switch (name) {
+            case "comment", "string"                   -> 6;
+            case "function.builtin", "variable.builtin" -> 5;
+            case "keyword", "boolean", "number"        -> 4;
+            case "operator"                            -> 3;
+            case "function", "method"                  -> 2;
+            default                                    -> 1;
+        };
     }
 
     // ── Token type mapping ────────────────────────────────────────────────

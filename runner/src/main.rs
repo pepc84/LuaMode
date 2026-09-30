@@ -612,6 +612,23 @@ fn register_globals(lua: &Lua) -> LuaResult<()> {
     // println / print — route through Processing's console so output appears
     // in the IDE console pane rather than the raw terminal.  The Lua builtins
     // (io.write, print) still work but go to stdout.
+    // Lua's own print() goes through C stdio, which is fully buffered when
+    // stdout is a pipe (as it is under the IDE), so output would show up in
+    // chunks or only at exit. Same formatting as Lua's print (tostring on each
+    // argument, tab-separated), but written and flushed a line at a time.
+    g.set("print", lua.create_function(|lua, args: LuaMultiValue| {
+        let tostring: LuaFunction = lua.globals().get("tostring")?;
+        let mut parts = Vec::with_capacity(args.len());
+        for v in args {
+            parts.push(tostring.call::<_, String>(v)?);
+        }
+        use std::io::Write;
+        let mut out = std::io::stdout().lock();
+        let _ = writeln!(out, "{}", parts.join("\t"));
+        let _ = out.flush();
+        Ok(())
+    })?)?;
+
     g.set("println", lua.create_function(|_, s: Option<String>| {
         processing::println(&s.unwrap_or_default()); Ok(())
     })?)?;

@@ -1,6 +1,9 @@
 package processing.mode.lua;
 
 import processing.app.Base;
+import processing.app.syntax.JEditTextArea;
+import processing.app.syntax.PdeTextArea;
+import processing.app.syntax.PdeTextAreaDefaults;
 import processing.app.ui.Editor;
 import processing.app.ui.EditorState;
 import processing.app.ui.EditorToolbar;
@@ -14,16 +17,26 @@ import java.util.List;
 public class LuaEditor extends Editor {
 
     private final LuaMode         luaMode;
-    private final LuaInputHandler inputHandler;
     private volatile LuaRunner    runner;
     private TsLuaTokenMarker      tokenMarker;
 
     public LuaEditor(Base base, String path, EditorState state, LuaMode mode)
             throws Exception {
         super(base, path, state, mode);
-        this.luaMode      = mode;
-        this.inputHandler = new LuaInputHandler(this);
+        this.luaMode = mode;
         installTokenMarker();
+    }
+
+    // ── Text area ─────────────────────────────────────────────────────────
+    //
+    // Editor's default is a bare JEditTextArea: no gutter (so no line numbers)
+    // and a PdeInputHandler that expects a PdeTextArea, which is why Enter
+    // misbehaved. Same setup as Java mode, with Lua-aware typing on top.
+    // Called from Editor's constructor, before our own fields are set.
+
+    @Override
+    protected JEditTextArea createTextArea() {
+        return new PdeTextArea(new PdeTextAreaDefaults(getMode()), new LuaInputHandler(this), this);
     }
 
     // ── Token marker ──────────────────────────────────────────────────────
@@ -31,6 +44,9 @@ public class LuaEditor extends Editor {
     private void installTokenMarker() {
         tokenMarker = new TsLuaTokenMarker();
         tokenMarker.setLintConsumer(this::onLintResults);
+        // highlights are rebuilt off the EDT; repaint once they're ready
+        tokenMarker.setRepaintHook(() -> javax.swing.SwingUtilities.invokeLater(
+            () -> getTextArea().getPainter().repaint()));
         processing.app.syntax.SyntaxDocument doc =
             (processing.app.syntax.SyntaxDocument) getTextArea().getDocument();
         doc.setTokenMarker(tokenMarker);

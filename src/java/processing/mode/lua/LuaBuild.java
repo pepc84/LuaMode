@@ -71,36 +71,25 @@ public final class LuaBuild {
         }
 
         ProcessBuilder pb = new ProcessBuilder(runner, tmp.toAbsolutePath().toString());
-        // Do NOT merge streams: Lua's print() goes to stdout, runtime errors to stderr.
-        // We drain stdout silently and map only stderr, so print() output never
-        // contaminates error messages.
+        pb.directory(sketch.getFolder());   // relative paths (loadImage, saveFrame) resolve in the sketch
 
         Process proc = pb.start();
 
-        // Drain stdout silently (sketch print() output); read stderr for error mapping.
-        // Both are drained on separate threads to prevent OS pipe-buffer deadlock.
-        Thread drainOut = new Thread(() -> {
-            try { proc.getInputStream().transferTo(OutputStream.nullOutputStream()); }
-            catch (IOException ignored) {}
-        }, "lua-stdout-drain");
-        drainOut.setDaemon(true);
-        drainOut.start();
-
-        // Collect stderr on a thread so we can destroy the process on interrupt.
+        // Processing's console shows whatever goes to System.out / System.err,
+        // so forward the runner's output there line by line as it arrives:
+        // print() lands in the console like it does in Java mode. stderr is
+        // also kept for mapping errors back to tab/line. Separate threads so
+        // a full pipe on one stream can't block the other.
+        Thread drainOut = pump(proc.getInputStream(), System.out, null, "lua-stdout");
         StringBuilder stderrBuf = new StringBuilder();
-        Thread drainErr = new Thread(() -> {
-            try {
-                stderrBuf.append(
-                    new String(proc.getErrorStream().readAllBytes(), StandardCharsets.UTF_8));
-            } catch (IOException ignored) {}
-        }, "lua-stderr-drain");
-        drainErr.setDaemon(true);
-        drainErr.start();
+        Thread drainErr = pump(proc.getErrorStream(), System.err, stderrBuf, "lua-stderr");
 
         try {
             proc.waitFor();
         } catch (InterruptedException ie) {
+            // Stop pressed: close the sketch window
             proc.destroy();
+            if (!proc.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) proc.destroyForcibly();
             Thread.currentThread().interrupt();
             throw ie;
         }
@@ -111,6 +100,23 @@ public final class LuaBuild {
         if (proc.exitValue() == 0) return List.of();
 
         return LuaErrorMapper.map(stderrBuf.toString(), headerLines, tabStartLines);
+    }
+
+    private static Thread pump(java.io.InputStream in, java.io.PrintStream out,
+                               StringBuilder keep, String name) {
+        Thread t = new Thread(() -> {
+            try (java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(in, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    out.println(line);
+                    if (keep != null) synchronized (keep) { keep.append(line).append('\n'); }
+                }
+            } catch (IOException ignored) {}
+        }, name);
+        t.setDaemon(true);
+        t.start();
+        return t;
     }
 
     // ── Source assembly ───────────────────────────────────────────────────
