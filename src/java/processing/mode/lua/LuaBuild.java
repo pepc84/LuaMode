@@ -58,10 +58,13 @@ public final class LuaBuild {
      * @return list of problems; empty on clean exit
      */
     public List<LuaProblem> run() throws IOException, InterruptedException {
+        RunLog.log("build: assembling " + sketch.getCodeCount() + " tab(s)");
         String source = buildSource();
         Path   tmp    = writeTempFile(source);
+        RunLog.log("build: wrote " + tmp);
 
         String runner = resolveRunner();
+        RunLog.log("build: runner = " + runner);
         if (runner == null) {
             return List.of(new LuaProblem(0, 0,
                 "luamode-runner not found.  Build it with `cargo build --release` " +
@@ -73,6 +76,7 @@ public final class LuaBuild {
         ProcessBuilder pb = new ProcessBuilder(runner, tmp.toAbsolutePath().toString());
         pb.directory(sketch.getFolder());   // relative paths (loadImage, saveFrame) resolve in the sketch
 
+        RunLog.log("build: starting " + runner + " in " + pb.directory());
         Process proc = pb.start();
 
         // Processing's console shows whatever goes to System.out / System.err,
@@ -97,6 +101,7 @@ public final class LuaBuild {
         drainOut.join(500);
         drainErr.join(500);
 
+        RunLog.log("build: runner exited with " + proc.exitValue());
         if (proc.exitValue() == 0) return List.of();
 
         return LuaErrorMapper.map(stderrBuf.toString(), headerLines, tabStartLines);

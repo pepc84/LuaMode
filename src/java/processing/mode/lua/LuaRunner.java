@@ -55,6 +55,7 @@ public final class LuaRunner {
     // ── Worker ────────────────────────────────────────────────────────────
 
     private void doRun() {
+        RunLog.log("runner thread started");
         try {
             LuaBuild build = new LuaBuild(sketch, modeFolder);
             List<LuaProblem> problems = build.run();
@@ -80,7 +81,8 @@ public final class LuaRunner {
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            RunLog.log("run failed", e);
             listener.statusError("LuaMode: " + e.getMessage());
             e.printStackTrace();
         } finally {

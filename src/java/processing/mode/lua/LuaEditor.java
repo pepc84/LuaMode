@@ -151,6 +151,8 @@ public class LuaEditor extends Editor {
 
     /** Called by the toolbar's handleRun(int mode). mode 0=Run, 1=Present. */
     void startRunner(boolean present) {
+        RunLog.log("Run pressed (present=" + present + ") sketch=" + sketch.getName()
+            + " folder=" + sketch.getFolder());
         stopCurrentRunner();
         statusEmpty();
         LuaRunner[] ref = {null};
