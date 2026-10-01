@@ -177,14 +177,12 @@ public final class LuaBuild {
 
     /**
      * Looks for luamode-runner in priority order:
-     *   1. The binary extracted from the JAR by {@link LuaMode} at startup
-     *      (the normal installed path — works for end users out of the box).
-     *   2. {@code <modeFolder>/mode/runner/<platform>/luamode-runner}
-     *      (standard installed layout from the dist ZIP; {@code modeFolder} is the
-     *      mode root, e.g. {@code ~/sketchbook/modes/LuaMode/}).
-     *   3. {@code <modeFolder>/runner/target/release/luamode-runner}
-     *      (dev build — {@code cargo build --release} inside {@code LuaMode/runner/},
-     *      where {@code modeFolder} is the project root).
+     *   1. {@code <modeFolder>/runner/target/release/luamode-runner}, a local
+     *      {@code cargo build --release}, so a fresh dev build is always used.
+     *   2. The binary unpacked from the JAR by {@link LuaMode} at startup
+     *      (the normal installed path; works for end users out of the box).
+     *   3. {@code <modeFolder>/mode/runner/<platform>/luamode-runner}
+     *      (the dist ZIP layout).
      *
      * Returns the absolute path string, or null if not found anywhere.
      */
@@ -192,25 +190,24 @@ public final class LuaBuild {
         String exe = System.getProperty("os.name", "").toLowerCase().contains("win")
                      ? "luamode-runner.exe" : "luamode-runner";
 
-        // 1. Extracted from JAR by LuaMode on startup
+        // 1. Dev build: a fresh `cargo build --release` in runner/ always wins,
+        //    so working on the runner never runs a stale bundled copy
+        File devBuild = new File(modeFolder, "runner/target/release/" + exe);
+        if (devBuild.exists() && devBuild.canExecute()) {
+            return devBuild.getAbsolutePath();
+        }
+
+        // 2. Unpacked from the jar by LuaMode on startup
         File extracted = LuaMode.getRunnerExecutable();
         if (extracted != null && extracted.exists() && extracted.canExecute()) {
             return extracted.getAbsolutePath();
         }
 
-        // 2. Installed in mode/runner/<platform>/ inside the mode root
-        //    (standard layout from dist ZIP: LuaMode/mode/runner/<platform>/luamode-runner)
+        // 3. Installed in mode/runner/<platform>/ (dist ZIP layout)
         String platform = LuaMode.detectPlatform();
         File installed = new File(modeFolder, "mode/runner/" + platform + "/" + exe);
         if (installed.exists() && installed.canExecute()) {
             return installed.getAbsolutePath();
-        }
-
-        // 3. Dev build — modeFolder is the project root; runner/ is a direct child
-        //    (gradle buildRunner copies to mode/runner/<platform>/ but cargo output lands here)
-        File devBuild = new File(modeFolder, "runner/target/release/" + exe);
-        if (devBuild.exists() && devBuild.canExecute()) {
-            return devBuild.getAbsolutePath();
         }
 
         return null;

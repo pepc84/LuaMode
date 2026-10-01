@@ -24,14 +24,13 @@ import java.util.Set;
  *      and invoke it without knowing where the JAR lives.
  *
  * The runner is extracted to:
- *   {@code ~/.processing/luamode/<version>/runner/<platform>/luamode-runner}
+ *   {@code ~/.processing/luamode/runner/<platform>/<sha256 prefix>/luamode-runner}
  *
- * On subsequent IDE starts the cached binary is reused unless the JAR version
- * has changed (different directory), so startup stays fast.
+ * The folder is named after the runner's hash, so later IDE starts reuse it
+ * (fast) and a jar with a different runner always gets a fresh copy.
  */
 public class LuaMode extends Mode {
 
-    private static final String VERSION = "0.1.0";
 
     private static boolean nativeLoaded  = false;
     private static File    cachedRunner  = null;
@@ -93,8 +92,7 @@ public class LuaMode extends Mode {
 
     /**
      * Extracts luamode-runner from the JAR to a persistent cache directory.
-     * Skips extraction if the cached binary already exists (version-keyed path
-     * means a new release automatically extracts a fresh copy).
+     * Skips extraction if this exact runner (same hash) is already cached.
      *
      * Sets {@link #cachedRunner} so {@link LuaBuild} can call
      * {@link LuaMode#getRunnerExecutable()} without re-scanning the JAR.
@@ -107,30 +105,50 @@ public class LuaMode extends Mode {
         String  exeName = isWin ? "luamode-runner.exe" : "luamode-runner";
         String  resource = "runner/" + platform + "/" + exeName;
 
-        // Persistent cache: ~/.processing/luamode/<version>/runner/<platform>/
-        File cacheDir = new File(
-            System.getProperty("user.home"),
-            ".processing/luamode/" + VERSION + "/runner/" + platform);
-        File dest = new File(cacheDir, exeName);
+        // Cache folder is named after a hash of the bundled runner, so a jar
+        // with a different runner always unpacks it fresh. (Keying on a version
+        // string kept serving the first runner ever unpacked.)
+        //   ~/.processing/luamode/runner/<platform>/<sha256 prefix>/luamode-runner
+        byte[] bytes;
+        try (InputStream in = LuaMode.class.getClassLoader().getResourceAsStream(resource)) {
+            if (in == null) {
+                // Not bundled: dev build or platform not packaged yet; LuaBuild falls back.
+                System.err.println("[LuaMode] luamode-runner not bundled for: " + platform);
+                return;
+            }
+            bytes = in.readAllBytes();
+        } catch (Exception e) {
+            System.err.println("[LuaMode] Runner extraction failed: " + e.getMessage());
+            return;
+        }
 
-        if (dest.exists() && dest.canExecute()) {
+        File cacheDir = new File(System.getProperty("user.home"),
+            ".processing/luamode/runner/" + platform + "/" + shortHash(bytes));
+        File dest = new File(cacheDir, exeName);
+        if (dest.exists() && dest.canExecute() && dest.length() == bytes.length) {
             cachedRunner = dest;
             return;
         }
 
-        try (InputStream in = LuaMode.class.getClassLoader().getResourceAsStream(resource)) {
-            if (in == null) {
-                // Not bundled — dev build or platform not packaged yet; LuaBuild falls back.
-                System.err.println("[LuaMode] luamode-runner not bundled for: " + platform);
-                return;
-            }
+        try {
             cacheDir.mkdirs();
-            Files.copy(in, dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.write(dest.toPath(), bytes);
             makeExecutable(dest);
             cachedRunner = dest;
-            System.out.println("[LuaMode] Extracted runner → " + dest);
+            System.out.println("[LuaMode] Extracted runner to " + dest);
         } catch (Exception e) {
             System.err.println("[LuaMode] Runner extraction failed: " + e.getMessage());
+        }
+    }
+
+    private static String shortHash(byte[] data) {
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256").digest(data);
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 6; i++) sb.append(String.format("%02x", d[i]));
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return Integer.toHexString(java.util.Arrays.hashCode(data));
         }
     }
 
