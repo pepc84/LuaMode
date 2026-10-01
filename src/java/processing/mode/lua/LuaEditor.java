@@ -151,6 +151,10 @@ public class LuaEditor extends Editor {
 
     /** Called by the toolbar's handleRun(int mode). mode 0=Run, 1=Present. */
     void startRunner(boolean present) {
+        // Copy each tab's live editor text into the sketch (and clear the
+        // console if that preference is on). Without this, Run used what was
+        // last saved to disk, so an unsaved sketch ran as an empty file.
+        prepareRun();
         RunLog.log("Run pressed (present=" + present + ") sketch=" + sketch.getName()
             + " folder=" + sketch.getFolder());
         stopCurrentRunner();
